@@ -1,0 +1,40 @@
+name: Security cleanup verification
+
+on:
+  push:
+    branches: [security/remove-injected-loader-20261115]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_API_BASE_URL: https://example.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Confirm injected entrypoints are absent
+        shell: bash
+        run: |
+          test ! -e init
+          ! grep -q 'node init' package.json
+          if [ -f postcss.config.mjs ]; then
+            ! grep -Eq 'createRequire|new Function|var bx = ' postcss.config.mjs
+          fi
+      - name: Install without dependency lifecycle scripts
+        run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Build application
+        run: npm run build
+      - name: Audit high and critical vulnerabilities
+        run: npm audit --audit-level=high
